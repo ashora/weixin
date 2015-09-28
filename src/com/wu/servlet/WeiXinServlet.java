@@ -54,6 +54,7 @@ public class WeiXinServlet extends HttpServlet {
 		req.setCharacterEncoding("UTF-8");
 		resp.setCharacterEncoding("UTF-8");
 		PrintWriter pWriter = resp.getWriter();
+		pWriter.print("success");
 		try {
 			Map<String, String> map = MessageUtil.xml2Map(req);
 			if (map.get("MsgType").equals("text")) {
