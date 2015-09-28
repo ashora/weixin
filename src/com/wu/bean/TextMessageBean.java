@@ -7,7 +7,7 @@ package com.wu.bean;
 public class TextMessageBean {
 	private String ToUserName;
 	private String FromUserName;
-	private String CreateTime;
+	private long CreateTime;
 	private String MsgType;
 	private String Content;
 	public String getToUserName() {
@@ -22,10 +22,10 @@ public class TextMessageBean {
 	public void setFromUserName(String fromUserName) {
 		FromUserName = fromUserName;
 	}
-	public String getCreateTime() {
+	public long getCreateTime() {
 		return CreateTime;
 	}
-	public void setCreateTime(String createTime) {
+	public void setCreateTime(long createTime) {
 		CreateTime = createTime;
 	}
 	public String getMsgType() {

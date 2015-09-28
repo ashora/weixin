@@ -8,6 +8,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 
 import javax.servlet.ServletException;
@@ -16,12 +17,15 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.dom4j.DocumentException;
+import org.omg.CosNaming.NamingContextExtPackage.StringNameHelper;
 
 import com.alibaba.fastjson.JSON;
 import com.wu.bean.TextMessageBean;
-import com.wu.bean.TuLingTextMessageBean;
+import com.wu.bean.TuLingMessageBean;
+import com.wu.bean.TuLingMessageBean.ListEntity;
 import com.wu.utils.CheckUtil;
 import com.wu.utils.MessageUtil;
+import com.wu.utils.TuLingMessageUtils;
 
 public class WeiXinServlet extends HttpServlet {
 
@@ -55,34 +59,29 @@ public class WeiXinServlet extends HttpServlet {
 		resp.setCharacterEncoding("UTF-8");
 		PrintWriter pWriter = resp.getWriter();
 		pWriter.print("success");
+		String temp = null;
 		try {
 			Map<String, String> map = MessageUtil.xml2Map(req);
 			if (map.get("MsgType").equals("text")) {
-				String string = tuling(map.get("Content"));
-				TextMessageBean bean = new TextMessageBean();
-				bean.setFromUserName(map.get("ToUserName"));
-				bean.setCreateTime("1443356684");
-				bean.setContent(JSON.parseObject(string, TuLingTextMessageBean.class).getText());
-//				bean.setContent(map.get("Content"));
-				bean.setToUserName(map.get("FromUserName"));
-				bean.setMsgType("text");
-				String temp = MessageUtil.map2xml(bean);
-				System.out.println("这是返回的消息\n" + temp);
-				pWriter.print(temp);
+				temp = doTextMessage(map);
 			}
 		} catch (DocumentException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-		} finally {
-			pWriter.close();
 		}
+		System.out.println("这是发给用户的消息\n" + temp);
+		if (temp != null) {
+			pWriter.print(temp);
+		}
+		pWriter.close();
 	}
 
-	public String tuling(String arg) throws IOException {
+	public String tuling(String arg, String fromUser) throws IOException {
 
 		String APIKEY = "edb126d0aec7cdc0970bb8f08d73cdfd";
 		String INFO = URLEncoder.encode(arg, "utf-8");
-		String getURL = "http://www.tuling123.com/openapi/api?key=" + APIKEY + "&info=" + INFO;
+		String getURL = "http://www.tuling123.com/openapi/api?key=" + APIKEY + "&info=" + INFO + "&userid=" + fromUser;
+		System.out.println("请求图灵接口的url\r" + getURL);
 		URL getUrl = new URL(getURL);
 		HttpURLConnection connection = (HttpURLConnection) getUrl.openConnection();
 		connection.connect();
@@ -99,6 +98,112 @@ public class WeiXinServlet extends HttpServlet {
 		connection.disconnect();
 		System.out.println(sb);
 		return sb.toString();
+	}
+
+	/**
+	 * 处理用户发来的文本消息
+	 * 
+	 * @param map
+	 * @return
+	 * @throws IOException
+	 */
+	private String doTextMessage(Map<String, String> map) throws IOException {
+		String string = tuling(map.get("Content"), map.get("FromUserName"));
+		// 从图灵服务器得到的消息
+		TuLingMessageBean tulingBean = JSON.parseObject(string, TuLingMessageBean.class);
+		String temp = null;
+		switch (tulingBean.getCode()) {
+		case TuLingMessageUtils.CODE_TEXT:
+			TextMessageBean text_bean = new TextMessageBean();
+			text_bean.setFromUserName(map.get("ToUserName"));
+			text_bean.setCreateTime(System.currentTimeMillis() / 1000);
+			text_bean.setContent(tulingBean.getText());
+			// bean.setContent(map.get("Content"));
+			text_bean.setToUserName(map.get("FromUserName"));
+			text_bean.setMsgType("text");
+			temp = MessageUtil.map2xml(text_bean);
+			break;
+		case TuLingMessageUtils.CODE_NEWS:
+			List<ListEntity> newsList = tulingBean.getList();
+			StringBuilder sb = new StringBuilder();
+			for (ListEntity listEntity : newsList) {
+				sb.append(listEntity.getArticle());
+				sb.append("\n");
+				sb.append("来源：" + listEntity.getSource());
+				sb.append("\n");
+				sb.append(listEntity.getDetailurl());
+				sb.append("\n\n");
+			}
+			TextMessageBean news_bean = new TextMessageBean();
+			news_bean.setFromUserName(map.get("ToUserName"));
+			news_bean.setCreateTime(System.currentTimeMillis() / 1000);
+			news_bean.setContent(sb.toString());
+			// bean.setContent(map.get("Content"));
+			news_bean.setToUserName(map.get("FromUserName"));
+			news_bean.setMsgType("text");
+			temp = MessageUtil.map2xml(news_bean);
+			break;
+		case TuLingMessageUtils.CODE_TRAIN:
+			StringBuilder sb_train = new StringBuilder();
+			sb_train.append(tulingBean.getText()+"\n");
+			List<ListEntity> trainList = tulingBean.getList();
+			for (ListEntity listEntity : trainList) {
+				sb_train.append("车次：");
+				sb_train.append(listEntity.getTrainnum());
+				sb_train.append("\n");
+				sb_train.append(listEntity.getStart());
+				sb_train.append("\t到\t");
+				sb_train.append(listEntity.getTerminal());
+				sb_train.append("\n");
+				sb_train.append("发车：");
+				sb_train.append(listEntity.getStarttime());
+				sb_train.append("\t");
+				sb_train.append("终到：");
+				sb_train.append(listEntity.getEndtime());
+				sb_train.append("\n\n");
+			}
+			TextMessageBean train_bean = new TextMessageBean();
+			train_bean.setFromUserName(map.get("ToUserName"));
+			train_bean.setCreateTime(System.currentTimeMillis() / 1000);
+			train_bean.setContent(sb_train.toString());
+			// bean.setContent(map.get("Content"));
+			train_bean.setToUserName(map.get("FromUserName"));
+			train_bean.setMsgType("text");
+			temp = MessageUtil.map2xml(train_bean);
+			break;
+		case TuLingMessageUtils.CODE_OTHER:
+			StringBuilder sb_other = new StringBuilder();
+			sb_other.append(tulingBean.getText()+"\n");
+			List<ListEntity> otherList = tulingBean.getList();
+			int i = 0;
+			for (ListEntity listEntity : otherList) {
+				i++;
+				sb_other.append("菜名：");
+				sb_other.append(listEntity.getName());
+				sb_other.append("\n");
+				sb_other.append("原料：");
+				sb_other.append(listEntity.getInfo());
+				sb_other.append("\n操作步骤：");
+				sb_other.append(listEntity.getDetailurl());
+				if (i>5) {
+					break;
+				}else {
+					sb_other.append("\n\n");
+				}
+			}
+			TextMessageBean other_bean = new TextMessageBean();
+			other_bean.setFromUserName(map.get("ToUserName"));
+			other_bean.setCreateTime(System.currentTimeMillis() / 1000);
+			other_bean.setContent(sb_other.toString());
+			// bean.setContent(map.get("Content"));
+			other_bean.setToUserName(map.get("FromUserName"));
+			other_bean.setMsgType("text");
+			temp = MessageUtil.map2xml(other_bean);
+			break;
+		default:
+			break;
+		}
+		return temp;
 	}
 
 }
